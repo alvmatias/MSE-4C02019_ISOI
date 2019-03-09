@@ -1,16 +1,15 @@
 /** 
-* @file  OS_config.h
+* @file  main.h
 * @brief 
 * @note  Copyright 2019 - Esp. Ing. Matias Alvarez.
 */
-#ifndef _OS_CONFIG_H_
-#define _OS_CONFIG_H_
+#ifndef _MAIN_H_
+#define _MAIN_H_
 
 /*==================[inclusions]=============================================*/
 
 /*==================[macros]=================================================*/
-#define OS_MINIMAL_STACK_SIZE	( ( unsigned short ) 128 )
-#define OS_MAX_TASK				 2 
+
 /*==================[typedef]================================================*/
 
 /*==================[internal data declaration]==============================*/
@@ -26,4 +25,4 @@
 /*==================[external functions definition]==========================*/
 
 /*==================[end of file]============================================*/
-#endif /* #ifndef _OS_CONFIG_H_ */
+#endif /* #ifndef _MAIN_H_ */

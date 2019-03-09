@@ -1,6 +1,6 @@
 include config.mk
 
-MODULES=app lib/lpc_chip_43xx lib/lpc_board_ciaa_edu_4337
+MODULES=OS lib/lpc_chip_43xx lib/lpc_board_ciaa_edu_4337
 DEFINES=CORE_M4 __USE_LPCOPEN __USE_NEWLIB
 
 SRC=$(foreach m, $(MODULES), $(wildcard $(m)/src/*.c))

@@ -1,4 +1,4 @@
-APP=arquitecturaDeMicroprocesadores
+APP=ISO
 VERBOSE=n
 OPT=g
 USE_NANO=y
