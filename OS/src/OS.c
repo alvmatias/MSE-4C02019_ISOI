@@ -50,28 +50,29 @@ uint8_t taskCreate(taskFunction_t taskFx, uint32_t * stack, uint32_t stackSize,
 
 		if(OS_MINIMAL_STACK_SIZE <= stackSize)
 		{
-			/* inicializo el frame en cero */
+			/* Inicializo el frame en cero */
 			bzero(stack, stackSize);
 
-			/* último elemento del contexto inicial: xPSR
-			 * necesita el bit 24 (T, modo Thumb) en 1
+			/* Ultimo elemento del contexto inicial: xPSR
+			 * Necesita el bit 24 (T, modo Thumb) en 1
 			 */
 			stack[stackSize/4 - 1] 	= 1<<24;
 
-			/* anteúltimo elemento: PC (entry point) */
+			/* Anteultimo elemento: PC (entry point) */
 			stack[stackSize/4 - 2] 	= (uint32_t)taskFx;
 
-			/* penúltimo elemento: LR (return hook) */
+			/* Penultimo elemento: LR (return hook) */
 			stack[stackSize/4 - 3] 	= (uint32_t)returnHook;
 
-			/* elemento -8: R0 (parámetro) */
+			/* Elemento -8: R0 (parámetro) */
 			stack[stackSize/4 - 8] 	= (uint32_t)parameter;
 
 			stack[stackSize/4 - 9] 	= 0xFFFFFFF9;
 
-			/* inicializo stack pointer inicial */
+			/* Inicializo stack pointer inicial considerando lo otros 8 registros pusheados */
 			*stackPointer 			= (uint32_t)&(stack[stackSize/4 - 17]);
 
+			/* Inicialiazo el TCB */
 			taskList[currentTask].taskFx 		= taskFx;
 			taskList[currentTask].stack 		= stack;
 			taskList[currentTask].stackSize		= stackSize;
@@ -91,7 +92,10 @@ uint8_t taskCreate(taskFunction_t taskFx, uint32_t * stack, uint32_t stackSize,
 void taskStartScheduler()
 {
 	SysTick_Config(SystemCoreClock / 1000);
-	while(1);
+	while(1)
+	{
+		__WFI();
+	}
 }
 
 
@@ -107,16 +111,15 @@ int32_t taskSchedule(int32_t currentContext)
 	else
 	{
 		currentTask = (currentTask + 1) % OS_MAX_TASK; /* Aumentamos 1 de manera circular */
+		/* Si no dimos la vuelta, es decir que no estamos en la primer tarea */
 		if(currentTask)
 			*(taskList[currentTask - 1].stackPointer) = currentContext;
-		else
+		else /* Si es la primer tarea */
 			*(taskList[OS_MAX_TASK - 1].stackPointer) = currentContext;
 	}
 
 	return *(taskList[currentTask].stackPointer);
 	
-	while(1)
-		;
 }
 /*==================[end of file]============================================*/
 

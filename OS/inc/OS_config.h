@@ -9,8 +9,8 @@
 /*==================[inclusions]=============================================*/
 
 /*==================[macros]=================================================*/
-#define OS_MINIMAL_STACK_SIZE	( ( unsigned short ) 128 )
-#define OS_MAX_TASK				 2 
+#define OS_MINIMAL_STACK_SIZE	( ( unsigned int) 128 )
+#define OS_MAX_TASK				 3 
 /*==================[typedef]================================================*/
 
 /*==================[internal data declaration]==============================*/
