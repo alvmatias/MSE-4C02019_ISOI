@@ -27,13 +27,15 @@ typedef void (*taskFunction_t)(void *);
 /*==================[internal functions definition]==========================*/
 
 /*==================[external functions definition]==========================*/
-uint8_t taskCreate(taskFunction_t pxTaskCode, uint32_t * stack, uint32_t stackSize,
-				   void * paramenter);
+uint8_t taskCreate(taskFunction_t taskFx, uint32_t priority, uint32_t * stack, uint32_t stackSize,
+				   void * parameters);
 
 void 	taskStartScheduler();
 
-int32_t taskSchedule(int32_t actualContext);
+int32_t taskSchedule(int32_t currentContext);
 
 void 	taskDelay(uint32_t ticksToDelay);
+
+uint32_t taskGetTickCount();
 /*==================[end of file]============================================*/
 #endif /* #ifndef _OS_H_ */

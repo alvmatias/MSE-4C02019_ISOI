@@ -10,9 +10,10 @@
 #include "board.h"
 #include <string.h>
 /*==================[macros]=================================================*/
-#define OS_INVALID_TASK 	0xFF
-#define EXC_RETURN			0xFFFFFFF9
+#define OS_INVALID_TASK		OS_MAX_TASK
+#define OS_NULL_PRIORITY	0
 
+#define EXC_RETURN			0xFFFFFFF9
 #define NVIC_PENDSV_PRI		0xff
 /*==================[typedef]================================================*/
 typedef enum
@@ -29,33 +30,44 @@ typedef enum
 */
 typedef struct 
 {
-	uint32_t * 		stack; 			/**< Puntero al stack de la tarea - Buffer provisto por el usuario del SO */
-	uint32_t    	stackSize;		/**< Tamaño del stack de la tarea */
-	uint32_t 		stackPointer;	/**< Puntero de pila */   
-	taskFunction_t 	taskFx;     	/**< Tarea a ejecutar */
-	void  * 		parameters;		/**< Puntero a los parametros de la tarea */
-	
+	uint32_t * 		stack; 				/**< Puntero al stack de la tarea - Buffer provisto por el usuario del SO */
+	uint32_t    	stackSize;			/**< Tamaño del stack de la tarea */
+	uint32_t 		stackPointer;		/**< Puntero de pila */   
+	taskFunction_t 	taskFx;     		/**< Tarea a ejecutar */
+	void  * 		parameters;			/**< Puntero a los parametros de la tarea */
+	uint32_t  		priority;			/**< Prioridad de la tarea */
 	#if ( OS_USE_TASK_DELAY == 1 )
-		taskState_t 	state;
-		uint32_t        ticksToWait;
+		taskState_t 	state;			/**< Estado de la tarea */
+		uint32_t        ticksToWait;	/**< Ticks a esperar en caso de ejecucion de taskDelay() */
 	#endif
 }taskControlBlock_t;
 
-
-
+/* Invertimos memoria por tiempo de ejecucion del scheduler */
+typedef struct 
+{
+	uint8_t readyTaskCnt;		/* Cantidad de tareas ready */
+	uint8_t firstReadyTask; 	/**< Puntero circular a la primera tarea ready */
+}readyTaskInfo_t;
 /*==================[internal data declaration]==============================*/
 #if ( OS_USE_TASK_DELAY == 1 )
-	static uint32_t idleTaskStack[OS_MINIMAL_STACK_SIZE];
+	/* Si esta estipulado el uso de delay se crea un espacio para la idle task */
+	static uint32_t idleTaskStack[OS_IDLE_STACK_SIZE];
 
 	static taskControlBlock_t taskList[OS_MAX_TASK + 1];
 #else
 	static taskControlBlock_t taskList[OS_MAX_TASK];
 #endif
 
-static uint8_t maxTask = 0;
-static uint8_t currentTask = OS_INVALID_TASK;
-
-static uint32_t tickCount = 0;
+/* Para un mejor uso de memoria solo guardaremos la posicion de la tarea en el arreglo de TCB's */
+static uint32_t readyTasklist[OS_MAX_TASK_PRIORITY][OS_MAX_TASK];
+/* A su vez llevamos informacion de las tareas ready en cada prioridad */
+static readyTaskInfo_t 	readyTaskInfo[OS_MAX_TASK_PRIORITY];
+/* Cantidad de tareas agregadas al SO */
+static uint8_t 	maxTask 	= 0;
+/* Tarea actual */
+static uint8_t 	currentTask = OS_INVALID_TASK;	
+/* Tick del sistema */
+static uint32_t tickCount 	= 0;
 /*==================[internal functions declaration]=========================*/
 
 /*==================[internal data definition]===============================*/
@@ -82,8 +94,77 @@ static void returnHook()
 		;
 }
 
+static void schedule()
+{
+	/* Instruction Synchronization Barrier: aseguramos que se
+	 * ejecuten todas las instrucciones en  el pipeline
+	 */
+	__ISB();
+	/* Data Synchronization Barrier: aseguramos que se
+	 * completen todos los accesos a memoria
+	 */
+	__DSB();
+
+	SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+	
+}
+
+static bool taskIncrementTick()
+{
+	bool retVal = false;
+
+	if(!((++tickCount) % OS_TICKS_UNTIL_SCHEDULE))
+	{
+		retVal = true;
+	}	
+
+	#if ( OS_USE_TICK_HOOK == 1 )
+	{
+		tickHook();
+	}
+	#endif
+
+	return retVal;
+
+}
+
+/* TO DO: Implementar FIFO SCHED */
+#if ( OS_USE_ROUND_ROBIN_SCHED == 1)
+	static void addReadyTask(uint8_t id, uint32_t priority)
+	{
+
+		readyTasklist[priority]
+		[(readyTaskInfo[priority].firstReadyTask + readyTaskInfo[priority].readyTaskCnt) % maxTask] = id;
+		readyTaskInfo[priority].readyTaskCnt++;
+
+	}
+
+	static void removeReadyTask(uint8_t * id, uint32_t priority)
+	{
+		*id = readyTasklist[priority][readyTaskInfo[priority].firstReadyTask];
+		readyTaskInfo[priority].firstReadyTask = (readyTaskInfo[priority].firstReadyTask + 1) % maxTask;
+		readyTaskInfo[priority].readyTaskCnt--;
+	}
+#endif	
+
+#if ( OS_USE_TASK_DELAY == 1 )
+	static void delayUpdate(void)
+	{
+		uint8_t i;
+		for (i = 0; i < maxTask; i++) {
+			if (TASK_STATE_BLOCKED == taskList[i].state && 0 < taskList[i].ticksToWait) {
+				if (--taskList[i].ticksToWait == 0) {
+					taskList[i].state = TASK_STATE_READY;
+					addReadyTask(i, taskList[i].priority - 1);
+				}
+			}
+		}
+	}
+#endif
+
 static void initStack(uint32_t * stack, 
-					  uint32_t stackSize, 	
+					  uint32_t stackSize, 
+					  uint32_t priority,	
 					  taskFunction_t taskFx,
 					  void * parameters)
 {
@@ -115,57 +196,28 @@ static void initStack(uint32_t * stack,
 	taskList[maxTask].stack 		= stack;
 	taskList[maxTask].stackSize		= stackSize;
 	taskList[maxTask].parameters	= parameters;
+	taskList[maxTask].priority		= priority;
+	taskList[maxTask].state 		= TASK_STATE_READY;
 
 	#if ( OS_USE_TASK_DELAY == 1 )
-		taskList[maxTask].state 		= TASK_STATE_READY;
 		taskList[maxTask].ticksToWait   = 0;
 	#endif
 
 }
-
-static void schedule()
-{
-	/* Instruction Synchronization Barrier: aseguramos que se
-	 * ejecuten todas las instrucciones en  el pipeline
-	 */
-	__ISB();
-	/* Data Synchronization Barrier: aseguramos que se
-	 * completen todos los accesos a memoria
-	 */
-	__DSB();
-
-	SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
-	
-}
-#if ( OS_USE_TASK_DELAY == 1 )
-	static void delayUpdate(void)
-	{
-		uint8_t i;
-		for (i = 0; i < maxTask; i++) {
-			if (TASK_STATE_BLOCKED == taskList[i].state && 0 < taskList[i].ticksToWait) {
-				if (--taskList[i].ticksToWait == 0) {
-					taskList[i].state = TASK_STATE_READY;
-				}
-			}
-		}
-	}
-#endif
 /*==================[external functions definition]==========================*/
-uint8_t taskCreate(taskFunction_t taskFx, uint32_t * stack, uint32_t stackSize,
+uint8_t taskCreate(taskFunction_t taskFx, uint32_t priority, uint32_t * stack, uint32_t stackSize,
 				   void * parameters)
 {
 	uint8_t retVal = false;
 
-	if(OS_MAX_TASK > maxTask)
+	if(OS_MAX_TASK > maxTask && OS_MINIMAL_STACK_SIZE <= stackSize && 
+		OS_MAX_TASK_PRIORITY >= priority && OS_NULL_PRIORITY != priority)
 	{
 
-		if(OS_MINIMAL_STACK_SIZE <= stackSize)
-		{
-			initStack(stack, stackSize, taskFx, parameters);
-			maxTask++;
+		initStack(stack, stackSize, priority, taskFx, parameters);
+		maxTask++;
 
-			retVal = true;
-		}
+		retVal = true;
 		
 	}
 
@@ -174,12 +226,21 @@ uint8_t taskCreate(taskFunction_t taskFx, uint32_t * stack, uint32_t stackSize,
 
 void taskStartScheduler()
 {
+	uint8_t p;
+
 	#if ( OS_USE_TASK_DELAY == 1 )
 		/* Creacion idle task */
-		initStack(idleTaskStack, OS_MINIMAL_STACK_SIZE, idleHook, (void*)0);
-
-		currentTask = maxTask;
+		initStack(idleTaskStack, OS_IDLE_STACK_SIZE, OS_NULL_PRIORITY, idleHook, (void*)0);
 	#endif
+
+	for(p = 0; p < maxTask; p++)
+	{
+		addReadyTask(p, taskList[p].priority - 1);
+	}
+	for(p = 0; p < OS_MAX_TASK_PRIORITY; p++)
+	{
+		readyTaskInfo[p].firstReadyTask = 0;
+	}
 
 	/* Systick y pendSV con menor prioridad posible */
 	NVIC_SetPriority(PendSV_IRQn, (1 << __NVIC_PRIO_BITS) - 1);
@@ -198,103 +259,62 @@ void taskStartScheduler()
 
 int32_t taskSchedule(int32_t currentContext)
 {
-	#if ( OS_USE_TASK_DELAY == 1 )
-		uint8_t previousTask = currentTask;
-	#endif
+	uint8_t p;
 
 	if(OS_INVALID_TASK == currentTask)
 	{
 		/* Aca se entra cuando arranca el SO y cuando volvemos de la idle task */
 		#if ( OS_USE_TASK_DELAY == 1 )
-			taskList[maxTask].stackPointer = currentContext; /* Guardamos el contexto de la idle task */
-		#endif
-		currentTask = 0;
+			taskList[maxTask].stackPointer 	= currentContext; /* Guardamos el contexto de la idle task */
+			taskList[maxTask].state 		= TASK_STATE_READY;
+		#endif	
 	}
 	else
 	{
-		taskList[currentTask].stackPointer = currentContext;
-		//taskList[previousTask].state = TASK_STATE_READY;
-		currentTask = (currentTask + 1) % maxTask; /* Aumentamos 1 de manera circular */
+		taskList[currentTask].stackPointer 	= currentContext;
+		/* Podemos haber entrado al schedule por culpa de un taskDelay */
+		if(TASK_STATE_RUNNING == taskList[currentTask].state )
+		{
+			taskList[currentTask].state = TASK_STATE_READY;
+			addReadyTask(currentTask, taskList[currentTask].priority - 1);
+		}
+		
 	}
-	/*
-	 * Existen 4 posibilidades de cambio de contexto
-     * 1 - Estamos en una tarea RUNNING y pasamos a una tarea READY
-     * 2 - Estamos en una tarea RUNNING, NO hay tareas READY y volvemos a la tarea RUNNING
-     * 3 - Estamos en una tarea que llamo a taskDelay y entro en estado BLOCKED y pasamos a una tarea READY
-     * 4 - Estamos en una tarea que llamo a taskDelay y entro en estado BLOCKED, NO hay tarea READY y pasamos
-     * a la tarea idle 
-	*/
-	#if ( OS_USE_TASK_DELAY == 1 )
-		/* Salgo del while cuando encuentro una tarea ready
-		 * o cuando doy toda la vuelta -> es decir que previousTask == currentTask */
-		/* Si salgo del while al encontrar una tarea ready ataco los casos 1 y 3 */
-		/* Si salgo del while al volver a la tarea actual, tengo que diferenciar los casos 2 y 4 */
-		while(TASK_STATE_READY != taskList[currentTask].state && previousTask != currentTask)
-		{
-			currentTask = (currentTask + 1) % maxTask; /* Aumentamos 1 de manera circular */
-		}
-		/* Si sali del while es porque volvi a la misma tarea */
-		if(previousTask == currentTask)
-		{
-			/* Si esta pausada == Caso 4 */
-			if(TASK_STATE_BLOCKED == taskList[currentTask].state)
-			{
-				/* En maxTask almacenamos el estado de la idleTask al empezar el SO */
-				taskList[maxTask].state = TASK_STATE_RUNNING;
-				currentTask = OS_INVALID_TASK;
-				return taskList[maxTask].stackPointer; /* Le doy el procesador a la idle task */
-			}
-			/* else Caso 2, no hago nada porque sigo en el mismo contexto */		
-		}
-		else /* Casos 1 y 3 */
-		{
-			/* Caso 1 */
-			if(TASK_STATE_RUNNING == taskList[previousTask].state)
-			{
-				taskList[previousTask].state = TASK_STATE_READY;
-				
-			}
-			/* else Caso 3 ataco el problema en la siguiente linea */
 
-			taskList[currentTask].state  = TASK_STATE_RUNNING;
-
+	for(p = 0; p < OS_MAX_TASK_PRIORITY; p++)
+	{
+		if(readyTaskInfo[p].readyTaskCnt > 0)
+		{
+			/* Removemos siempre la primera */
+			removeReadyTask(&currentTask, p);
+			break;
 		}
-	#endif
+	}
+	if(p < OS_MAX_TASK_PRIORITY)
+	{
+		taskList[currentTask].state  = TASK_STATE_RUNNING;
+		return taskList[currentTask].stackPointer;
+	}
+	else
+	{
+		taskList[maxTask].state  = TASK_STATE_RUNNING;
+		return taskList[maxTask].stackPointer;
+	}
 
-	return taskList[currentTask].stackPointer;
 	
 }
 
 #if ( OS_USE_TASK_DELAY == 1 )
-void taskDelay(uint32_t ticksToDelay)
-{
-	if(0 < ticksToDelay && OS_INVALID_TASK != currentTask)
+	void taskDelay(uint32_t ticksToDelay)
 	{
-		taskList[currentTask].state = TASK_STATE_BLOCKED;
-		taskList[currentTask].ticksToWait = ticksToDelay; 
-		schedule();
+		if(0 < ticksToDelay && OS_INVALID_TASK != currentTask)
+		{
+			taskList[currentTask].state = TASK_STATE_BLOCKED;
+			taskList[currentTask].ticksToWait = ticksToDelay; 
+			schedule();
+		}
 	}
-}
 #endif
-
-bool taskIncrementTick()
-{
-	bool retVal = false;
-
-	if(!((++tickCount) % OS_TICKS_UNTIL_SCHEDULE))
-	{
-		retVal = true;
-	}	
-
-	#if ( OS_USE_TICK_HOOK == 1 )
-	{
-		tickHook();
-	}
-	#endif
-
-	return retVal;
-
-}
 
 uint32_t taskGetTickCount()
 {

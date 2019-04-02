@@ -32,30 +32,32 @@ void taskA(void * parameters)
 	while(1) 
 	{
 		Board_LED_Toggle(3);
-		for(i=0;i<0xfffff;i++);
-		//taskDelay(250);
+		//for(i=0;i<0xfffff;i++);
+		taskDelay(250);
 	}
 }
 
 void taskB(void * parameters)
 {
-	uint32_t j;
+	uint32_t i;
 
 	while(1) 
 	{
 		Board_LED_Toggle(2);
+		//for(i=0;i<0xfffff;i++);
 		taskDelay(500);
 	}
 }
 
 void taskC(void * parameters)
 {
-	uint32_t j;
+	uint32_t i;
 	uint8_t * prm = (uint8_t*)parameters;
 	while(1) 
 	{
 		if(*prm == 3)
 			Board_LED_Toggle(0);
+		//for(i=0;i<0xfffff;i++);
 		taskDelay(1000);
 	}
 }
@@ -66,9 +68,9 @@ int main(void){
 	SystemCoreClockUpdate();
 	uint8_t taskCParams = 3;
 	/* Creacion de las tareas */
-	taskCreate(taskA, taskAStack, OS_MINIMAL_STACK_SIZE, (void *)1);
-	taskCreate(taskB, taskBStack, OS_MINIMAL_STACK_SIZE, (void *)2);
-	taskCreate(taskC, taskCStack, OS_MINIMAL_STACK_SIZE, (void *)(&taskCParams));
+	taskCreate(taskA, 3, taskAStack, OS_MINIMAL_STACK_SIZE, (void *)1);
+	taskCreate(taskB, 3, taskBStack, OS_MINIMAL_STACK_SIZE, (void *)2);
+	taskCreate(taskC, 3, taskCStack, OS_MINIMAL_STACK_SIZE, (void *)(&taskCParams));
 	
 	/* Start the scheduler */
 	taskStartScheduler();

@@ -9,12 +9,16 @@
 /*==================[inclusions]=============================================*/
 
 /*==================[macros]=================================================*/
-#define OS_MINIMAL_STACK_SIZE	( ( unsigned int) 128 )
-#define OS_MAX_TASK				 3 
-#define OS_TICKS_UNTIL_SCHEDULE	 1	
-#define OS_USE_TICK_HOOK		 0
-#define OS_USE_TASK_DELAY		 1
-#define OS_USE_FIFO_SCHED	     0 
+#define OS_MINIMAL_STACK_SIZE	 	128
+#define OS_IDLE_STACK_SIZE		 	64
+#define OS_MAX_TASK				 	3
+#define OS_MAX_TASK_PRIORITY	 	3 
+
+#define OS_TICKS_UNTIL_SCHEDULE	 	1
+
+#define OS_USE_TICK_HOOK		 	0
+#define OS_USE_TASK_DELAY		 	1
+#define OS_USE_ROUND_ROBIN_SCHED	1  /* Por ahora siempre en 1 */
 /*==================[typedef]================================================*/
 
 /*==================[internal data declaration]==============================*/
