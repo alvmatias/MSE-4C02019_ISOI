@@ -9,7 +9,7 @@
 /*==================[inclusions]=============================================*/
 #include <stdint.h>
 /*==================[macros]=================================================*/
-
+#define OS_MAX_DELAY ( uint32_t ) 0xffffffffUL
 /*==================[typedef]================================================*/
 /**
 * @def void (*taskFunction_t)(void *)
@@ -28,10 +28,12 @@ typedef void (*taskFunction_t)(void *);
 
 /*==================[external functions definition]==========================*/
 uint8_t taskCreate(taskFunction_t pxTaskCode, uint32_t * stack, uint32_t stackSize,
-				 uint32_t * stackPointer, void * paramenter);
-void taskStartScheduler();
+				   void * paramenter);
 
+void 	taskStartScheduler();
 
 int32_t taskSchedule(int32_t actualContext);
+
+void 	taskDelay(uint32_t ticksToDelay);
 /*==================[end of file]============================================*/
 #endif /* #ifndef _OS_H_ */

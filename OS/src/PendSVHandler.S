@@ -15,7 +15,7 @@
 	 * es decir que podemos verlo desde otros modulos (equivalente a extern).
      * Definimos la rutina como global para que sea visible desde otros modulos.
      */
-	.global SysTick_Handler
+	.global PendSV_Handler
 
 
 	/**
@@ -25,8 +25,7 @@
 	 */
 	.thumb_func
 
-
-SysTick_Handler:
+PendSV_Handler:
 
 
 	push {r4-r11,lr}  	/* Push de contexto */
