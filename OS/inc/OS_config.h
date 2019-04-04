@@ -10,7 +10,7 @@
 
 /*==================[macros]=================================================*/
 #define OS_MINIMAL_STACK_SIZE	 	128
-#define OS_IDLE_STACK_SIZE		 	64
+#define OS_IDLE_STACK_SIZE		 	128
 #define OS_MAX_TASK				 	3
 #define OS_MAX_TASK_PRIORITY	 	3 
 

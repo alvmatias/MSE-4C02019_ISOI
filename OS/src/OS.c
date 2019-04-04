@@ -10,7 +10,8 @@
 #include "board.h"
 #include <string.h>
 /*==================[macros]=================================================*/
-#define OS_INVALID_TASK		OS_MAX_TASK
+#define OS_INVALID_TASK		0xFF
+#define OS_IDLE_TASK 		OS_MAX_TASK
 #define OS_NULL_PRIORITY	0
 
 #define EXC_RETURN			0xFFFFFFF9
@@ -45,7 +46,7 @@ typedef struct
 /* Invertimos memoria por tiempo de ejecucion del scheduler */
 typedef struct 
 {
-	uint8_t readyTaskCnt;		/* Cantidad de tareas ready */
+	uint8_t readyTaskCnt;		/**< Cantidad de tareas ready */
 	uint8_t firstReadyTask; 	/**< Puntero circular a la primera tarea ready */
 }readyTaskInfo_t;
 /*==================[internal data declaration]==============================*/
@@ -59,15 +60,15 @@ typedef struct
 #endif
 
 /* Para un mejor uso de memoria solo guardaremos la posicion de la tarea en el arreglo de TCB's */
-static uint32_t readyTasklist[OS_MAX_TASK_PRIORITY][OS_MAX_TASK];
+static uint32_t 		readyTaskList[OS_MAX_TASK_PRIORITY][OS_MAX_TASK];
 /* A su vez llevamos informacion de las tareas ready en cada prioridad */
 static readyTaskInfo_t 	readyTaskInfo[OS_MAX_TASK_PRIORITY];
 /* Cantidad de tareas agregadas al SO */
-static uint8_t 	maxTask 	= 0;
+static uint8_t 			maxTask 	= 0;
 /* Tarea actual */
-static uint8_t 	currentTask = OS_INVALID_TASK;	
+static uint8_t 			currentTask = OS_INVALID_TASK;	
 /* Tick del sistema */
-static uint32_t tickCount 	= 0;
+static uint32_t 		tickCount 	= 0;
 /*==================[internal functions declaration]=========================*/
 
 /*==================[internal data definition]===============================*/
@@ -75,25 +76,46 @@ static uint32_t tickCount 	= 0;
 /*==================[external data definition]===============================*/
 
 /*==================[internal functions definition]==========================*/
-__attribute__ ((weak)) void tickHook(void)
-{
 
-}
-
-__attribute__ ((weak)) void idleHook(void * parameters)
-{
-	while(1)
+#if ( OS_USE_TICK_HOOK == 1 )
+	/**
+	*
+	*
+	*/
+	__attribute__ ((weak)) void tickHook(void)
 	{
-		__WFI();
-	}
-}
 
+	}
+#endif
+
+#if ( OS_USE_TASK_DELAY == 1 )
+	/**
+	*
+	*
+	*/
+	__attribute__ ((weak)) void idleHook(void * parameters)
+	{
+		while(1)
+		{
+			__WFI();
+		}
+	}
+#endif
+
+/**
+*
+*
+*/
 static void returnHook()
 {
 	while(1)
 		;
 }
 
+/**
+*
+*
+*/
 static void schedule()
 {
 	/* Instruction Synchronization Barrier: aseguramos que se
@@ -109,20 +131,26 @@ static void schedule()
 	
 }
 
+/**
+*
+*
+*/
 static bool taskIncrementTick()
 {
 	bool retVal = false;
 
-	if(!((++tickCount) % OS_TICKS_UNTIL_SCHEDULE))
+	tickCount++;
+	if(0 == (tickCount % OS_TICKS_UNTIL_SCHEDULE)) 
 	{
+
+		#if ( OS_USE_TICK_HOOK == 1 )
+		{
+			tickHook();
+		}
+		#endif
+
 		retVal = true;
 	}	
-
-	#if ( OS_USE_TICK_HOOK == 1 )
-	{
-		tickHook();
-	}
-	#endif
 
 	return retVal;
 
@@ -130,10 +158,14 @@ static bool taskIncrementTick()
 
 /* TO DO: Implementar FIFO SCHED */
 #if ( OS_USE_ROUND_ROBIN_SCHED == 1)
+	/**
+	*
+	*
+	*/
 	static void addReadyTask(uint8_t id, uint32_t priority)
 	{
 
-		readyTasklist[priority]
+		readyTaskList[priority]
 		[(readyTaskInfo[priority].firstReadyTask + readyTaskInfo[priority].readyTaskCnt) % maxTask] = id;
 		readyTaskInfo[priority].readyTaskCnt++;
 
@@ -141,19 +173,34 @@ static bool taskIncrementTick()
 
 	static void removeReadyTask(uint8_t * id, uint32_t priority)
 	{
-		*id = readyTasklist[priority][readyTaskInfo[priority].firstReadyTask];
-		readyTaskInfo[priority].firstReadyTask = (readyTaskInfo[priority].firstReadyTask + 1) % maxTask;
+		*id = readyTaskList[priority][readyTaskInfo[priority].firstReadyTask];
 		readyTaskInfo[priority].readyTaskCnt--;
+		if(0 == readyTaskInfo[priority].readyTaskCnt)
+		{
+			readyTaskInfo[priority].firstReadyTask = 0;
+		}
+		else
+		{
+			readyTaskInfo[priority].firstReadyTask = (readyTaskInfo[priority].firstReadyTask + 1) % maxTask;
+		}
+		
 	}
 #endif	
 
 #if ( OS_USE_TASK_DELAY == 1 )
+	/**
+	*
+	*
+	*/
 	static void delayUpdate(void)
 	{
 		uint8_t i;
-		for (i = 0; i < maxTask; i++) {
-			if (TASK_STATE_BLOCKED == taskList[i].state && 0 < taskList[i].ticksToWait) {
-				if (--taskList[i].ticksToWait == 0) {
+		for (i = 0; i < maxTask; i++) 
+		{
+			if (TASK_STATE_BLOCKED == taskList[i].state && 0 < taskList[i].ticksToWait) 
+			{
+				taskList[i].ticksToWait--;
+				if (taskList[i].ticksToWait == 0) {
 					taskList[i].state = TASK_STATE_READY;
 					addReadyTask(i, taskList[i].priority - 1);
 				}
@@ -162,6 +209,10 @@ static bool taskIncrementTick()
 	}
 #endif
 
+/**
+*
+*
+*/
 static void initStack(uint32_t * stack, 
 					  uint32_t stackSize, 
 					  uint32_t priority,	
@@ -205,6 +256,10 @@ static void initStack(uint32_t * stack,
 
 }
 /*==================[external functions definition]==========================*/
+/**
+*
+*
+*/
 uint8_t taskCreate(taskFunction_t taskFx, uint32_t priority, uint32_t * stack, uint32_t stackSize,
 				   void * parameters)
 {
@@ -224,6 +279,10 @@ uint8_t taskCreate(taskFunction_t taskFx, uint32_t priority, uint32_t * stack, u
 	return retVal;
 }
 
+/**
+*
+*
+*/
 void taskStartScheduler()
 {
 	uint8_t p;
@@ -249,24 +308,29 @@ void taskStartScheduler()
 
 	schedule();
 
+	/* No deberia arribar aca */
 	while(1)
 	{
 		__WFI();
 	}
 }
 
-
-
+/**
+*
+*
+*/
 int32_t taskSchedule(int32_t currentContext)
 {
 	uint8_t p;
 
-	if(OS_INVALID_TASK == currentTask)
+	if(OS_IDLE_TASK == currentTask)
 	{
 		/* Aca se entra cuando arranca el SO y cuando volvemos de la idle task */
 		#if ( OS_USE_TASK_DELAY == 1 )
+
 			taskList[maxTask].stackPointer 	= currentContext; /* Guardamos el contexto de la idle task */
 			taskList[maxTask].state 		= TASK_STATE_READY;
+			
 		#endif	
 	}
 	else
@@ -290,24 +354,24 @@ int32_t taskSchedule(int32_t currentContext)
 			break;
 		}
 	}
-	if(p < OS_MAX_TASK_PRIORITY)
+	if(p >= OS_MAX_TASK_PRIORITY)
 	{
-		taskList[currentTask].state  = TASK_STATE_RUNNING;
-		return taskList[currentTask].stackPointer;
+		currentTask = maxTask;
 	}
-	else
-	{
-		taskList[maxTask].state  = TASK_STATE_RUNNING;
-		return taskList[maxTask].stackPointer;
-	}
-
 	
+	taskList[currentTask].state  = TASK_STATE_RUNNING;
+	return taskList[currentTask].stackPointer;
+
 }
 
 #if ( OS_USE_TASK_DELAY == 1 )
+	/**
+	*
+	*
+	*/
 	void taskDelay(uint32_t ticksToDelay)
 	{
-		if(0 < ticksToDelay && OS_INVALID_TASK != currentTask)
+		if(0 < ticksToDelay && OS_IDLE_TASK != currentTask)
 		{
 			taskList[currentTask].state = TASK_STATE_BLOCKED;
 			taskList[currentTask].ticksToWait = ticksToDelay; 
@@ -316,25 +380,34 @@ int32_t taskSchedule(int32_t currentContext)
 	}
 #endif
 
+/**
+*
+*
+*/
 uint32_t taskGetTickCount()
 {
 	return tickCount;
 }
 
 /*==================[IRQ Handlers]======================================*/
-
+/**
+*
+*
+*/
 void SysTick_Handler( void )
 {
 	
 	/* Increment the RTOS tick. */
 	if(taskIncrementTick())
 	{
+		#if ( OS_USE_TASK_DELAY == 1 )
+			delayUpdate();
+    	#endif
+
 		schedule();
 	}
 	
-	#if ( OS_USE_TASK_DELAY == 1 )
-		delayUpdate();
-    #endif
+	
 
 }
 /*==================[end of file]============================================*/
