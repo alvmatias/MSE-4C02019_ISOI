@@ -68,9 +68,9 @@ int main(void){
 	SystemCoreClockUpdate();
 	uint8_t taskCParams = 3;
 	/* Creacion de las tareas */
-	taskCreate(taskA, 2, taskAStack, OS_MINIMAL_STACK_SIZE, (void *)1);
-	taskCreate(taskB, 2, taskBStack, OS_MINIMAL_STACK_SIZE, (void *)2);
-	taskCreate(taskC, 3, taskCStack, OS_MINIMAL_STACK_SIZE, (void *)(&taskCParams));
+	taskCreate(taskA, 2, taskAStack, OS_MINIMAL_STACK_SIZE, "taskA", (void *)1);
+	taskCreate(taskB, 2, taskBStack, OS_MINIMAL_STACK_SIZE, "taskB", (void *)2);
+	taskCreate(taskC, 2, taskCStack, OS_MINIMAL_STACK_SIZE, "taskC", (void *)(&taskCParams));
 	
 	/* Start the scheduler */
 	taskStartScheduler();

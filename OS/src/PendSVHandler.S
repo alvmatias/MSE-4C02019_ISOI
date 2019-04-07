@@ -27,6 +27,7 @@
 
 PendSV_Handler:
 
+	cpsid i
 
 	push {r4-r11,lr}  	/* Push de contexto */
 
@@ -38,4 +39,6 @@ PendSV_Handler:
 
 	pop {r4-r11,lr} 	/* Pop de contexto */
  
+ 	cpsie i
+ 	
 	bx lr				/* Retorno de interrupcion */
