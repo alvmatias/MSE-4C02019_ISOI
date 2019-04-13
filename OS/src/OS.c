@@ -23,12 +23,6 @@
 #define OS_INVALID_TASK     0xFF
 
 /**
-* @def OS_IDLE_TASK
-* @var ID de la tarea idle
-*/
-#define OS_IDLE_TASK        OS_MAX_TASK
-
-/**
 * @def OS_NULL_PRIORITY
 * @var Valor de la prioridad nula
 */
@@ -46,16 +40,25 @@
 */
 #define NVIC_PENDSV_PRI     0xff
 /*==================[typedef]================================================*/
+/** @enum osState_t
+* @brief Posibles estados del SO
+*/
+typedef enum
+{
+    OS_STATE_SUSPENDED  = 0x00          /* Estado Suspendido - El OS NO realiza cambio de contexto */
+,   OS_STATE_RUNNING                    /* Estado Corriendo  - EL OS ejecuta normalmente */ 
+}osState_t;
+
 /**
 * @enum taskState_t 
 * @brief Posibles estados de una tarea
 */
 typedef enum
 {
-    TASK_STATE_TERMINATED       /**< Estado Terminado - La tarea no pertenece al sistema */
-,   TASK_STATE_READY            /**< Estado Terminado - La tarea esta a la espera de su ejecucion */
-,   TASK_STATE_RUNNING          /**< Estado Terminado - La tarea esta corriendo */
-,   TASK_STATE_BLOCKED          /**< Estado Terminado - La tarea esta a la espera de la ocurrencia de un evento*/
+    TASK_STATE_TERMINATED  = 0x00       /**< Estado Terminado - La tarea no pertenece al sistema */
+,   TASK_STATE_READY                    /**< Estado Ready     - La tarea esta a la espera de su ejecucion */
+,   TASK_STATE_RUNNING                  /**< Estado Corriendo - La tarea esta corriendo */
+,   TASK_STATE_BLOCKED                  /**< Estado Bloqueado - La tarea esta a la espera de la ocurrencia de un evento*/
 }taskState_t;
 
 /**
@@ -74,7 +77,9 @@ typedef struct
         taskState_t     state;                      /**< Estado de la tarea */
         uint32_t        ticksToWait;                /**< Ticks a esperar en caso de ejecucion de taskDelay() */
     #endif
+
     uint8_t         taskName[OS_MAX_TASK_NAME_LEN]; /**< Nombre de la tarea - Solo como proposito de debug */ 
+
 }taskControlBlock_t;
 
 /**
@@ -110,6 +115,7 @@ typedef struct
 #else
     taskControlBlock_t taskList[OS_MAX_TASK];                               /**< Lista de tareas del sistema */
 #endif
+    osState_t           state;
 
 }osControl_t;
 /*==================[internal data declaration]==============================*/
@@ -181,27 +187,6 @@ static void returnHook()
 }
 
 /**
-* @fn static void schedule()
-* @brief Funcion que setea la interrupcion del PendSV para que se ejecute el scheduler
-* @param Ninguno
-* @return Nada
-*/
-static void schedule()
-{
-    /* Instruction Synchronization Barrier: aseguramos que se
-     * ejecuten todas las instrucciones en  el pipeline
-     */
-    __ISB();
-    /* Data Synchronization Barrier: aseguramos que se
-     * completen todos los accesos a memoria
-     */
-    __DSB();
-
-    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
-    
-}
-
-/**
 * @fn static osReturn_t osIncrementTick()
 * @brief Funcion que incrementa el tick del sistema
 * @param Ninguno
@@ -211,7 +196,9 @@ static osReturn_t osIncrementTick()
 {
     osReturn_t retVal = OS_RESULT_ERROR;    /**< Valor de retorno de la funcion */
 
+    /* Aumentamos en 1 la cuenta de ticks del SO */
     g_Os.tickCount++;
+    /* Si es tick de ejecucion de scheduler */
     if(0 == (g_Os.tickCount % OS_TICKS_UNTIL_SCHEDULE)) 
     {
 
@@ -228,8 +215,7 @@ static osReturn_t osIncrementTick()
 
 }
 
-/* TO DO: Implementar FIFO SCHED */
-#if ( OS_USE_PREEMPTIVE_SCHED == 1)
+#if ( OS_USE_PRIO_ROUND_ROBIN_SCHED == 1)
     /**
     * @fn static void addReadyTask(uint8_t id, uint32_t prio)
     * @brief Funcion que agrega una tarea a la lista de tareas ready
@@ -289,8 +275,10 @@ static osReturn_t osIncrementTick()
         /* Por cada tarea */
         for (i = 0; i < g_Os.maxTask; i++) 
         {
-            /* Si la tarea esta bloqueada y la cantidad de ticks a esperar es mayor a 0 */
-            if (TASK_STATE_BLOCKED == g_Os.taskList[i].state && 0 < g_Os.taskList[i].ticksToWait) 
+            /* Si la tarea esta bloqueada y la cantidad de ticks a esperar es mayor a 0 
+                y menor que el maximo delay(delay forever) */
+            if (TASK_STATE_BLOCKED == g_Os.taskList[i].state 
+                && 0 < g_Os.taskList[i].ticksToWait && OS_MAX_DELAY > g_Os.taskList[i].ticksToWait) 
             {
                 /* Decrementamos los ticks a esperar */
                 g_Os.taskList[i].ticksToWait--;
@@ -375,6 +363,28 @@ static void initStack(uint32_t * stack,
 }
 /*==================[external functions definition]==========================*/
 /**
+* @fn void schedule()
+* @brief Funcion que setea la interrupcion del PendSV para que se ejecute el scheduler
+* @param Ninguno
+* @return Nada
+* @warning NO DEBERIA SER LLAMADA POR EL USUARIO DEL OS
+*/
+void schedule()
+{
+    /* Instruction Synchronization Barrier: aseguramos que se
+     * ejecuten todas las instrucciones en  el pipeline
+     */
+    __ISB();
+    /* Data Synchronization Barrier: aseguramos que se
+     * completen todos los accesos a memoria
+     */
+    __DSB();
+
+    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+    
+}
+
+/**
 * @fn osReturn_t taskCreate(taskFunction_t taskFx, uint32_t priority, uint32_t * stack, uint32_t stackSize,
                    char * taskName, void * parameters)
 * @brief Funcion que crea una tarea dentro del SO
@@ -391,10 +401,12 @@ osReturn_t taskCreate(taskFunction_t taskFx, uint32_t priority, uint32_t * stack
 {
     osReturn_t retVal = OS_RESULT_ERROR;
 
+    /* Si hay lugar para crear una nueva tarea, su stack size es mayor que el menor permitido,
+    su prioridad es menor que la maxima prioridad y distinta de 0 */
     if(OS_MAX_TASK > g_Os.maxTask && OS_MINIMAL_STACK_SIZE <= stackSize && 
         OS_MAX_TASK_PRIORITY >= priority && OS_NULL_PRIORITY != priority)
     {
-
+        /* Inicializamos el stack y aumentamos en 1 la cantidad de tareas actual del SO */
         initStack(stack, stackSize, priority, taskFx, taskName, parameters);
         g_Os.maxTask++;
 
@@ -414,7 +426,10 @@ osReturn_t taskCreate(taskFunction_t taskFx, uint32_t priority, uint32_t * stack
 */
 void taskStartScheduler()
 {
+    
     uint8_t p; /** Variable para recorrer la lista de prioridades y la lista de tareas */
+
+    g_Os.state = OS_STATE_RUNNING;
 
     /* So se usa el delay, se inicializa el stack de la idle task */
     #if ( OS_USE_TASK_DELAY == 1 )
@@ -457,7 +472,7 @@ void taskStartScheduler()
 int32_t taskSchedule(int32_t currentContext)
 {
     uint8_t p;  /** Variable para recorrer la lista de prioridades */
-
+    
     if(OS_IDLE_TASK == g_Os.currentTask)
     {
         /* Aca se entra si volvemos de la idle task */
@@ -477,7 +492,7 @@ int32_t taskSchedule(int32_t currentContext)
         /* Guardamos el contexto de la tarea actual */
         g_Os.taskList[g_Os.currentTask].stackPointer  = currentContext;
         /* Podemos haber entrado al schedule por culpa de un taskDelay */
-        if(TASK_STATE_RUNNING == g_Os.taskList[g_Os.currentTask].state )
+        if(OS_STATE_RUNNING == g_Os.state && TASK_STATE_RUNNING == g_Os.taskList[g_Os.currentTask].state)
         {
             /* Solo seteamos la tarea en ready si estaba corriendo */
             g_Os.taskList[g_Os.currentTask].state = TASK_STATE_READY;
@@ -486,32 +501,36 @@ int32_t taskSchedule(int32_t currentContext)
         }
         
     }
-
-    /* Por cada prioridad - IMPORTANTE: Mayor prioridad == Menor numero */
-    for(p = 0; p < OS_MAX_TASK_PRIORITY; p++)
+    /* Si el SO esta corriendo, hacemos el cambio de contexto */
+    if(OS_STATE_RUNNING == g_Os.state)
     {
-        /* Si hay tareas ready en la prioridad */
-        if(g_Os.readyTaskInfo[p].readyTaskCnt > 0)
+        /* Por cada prioridad - IMPORTANTE: Mayor prioridad == Menor numero */
+        for(p = 0; p < OS_MAX_TASK_PRIORITY; p++)
         {
-            /* Removemos siempre la primera tarea ready */
-            removeReadyTask(&g_Os.currentTask, p);
-            /* Frenamos la busqueda de tareas ready */
-            break; 
+            /* Si hay tareas ready en la prioridad */
+            if(g_Os.readyTaskInfo[p].readyTaskCnt > 0)
+            {
+                /* Removemos siempre la primera tarea ready */
+                removeReadyTask(&g_Os.currentTask, p);
+                /* Frenamos la busqueda de tareas ready */
+                break; 
+            }
         }
-    }
 
-    #if ( OS_USE_TASK_DELAY == 1 )
-        /* Si salimos del for sin encontrar una tarea ready */
-        if(p >= OS_MAX_TASK_PRIORITY)
-        {
-            /* Seteamos como tarea actual a la idle task */
-            /* Recordar que guardamos su informacion en el ultimo elemento de la lista de tareas */
-            g_Os.currentTask = g_Os.maxTask;
-        }
-    #endif
-    
-    /* Seteamos el estado de la tarea a ejecutarse como corriendo */
-    g_Os.taskList[g_Os.currentTask].state  = TASK_STATE_RUNNING;
+        #if ( OS_USE_TASK_DELAY == 1 )
+            /* Si salimos del for sin encontrar una tarea ready */
+            if(p >= OS_MAX_TASK_PRIORITY)
+            {
+                /* Seteamos como tarea actual a la idle task */
+                /* Recordar que guardamos su informacion en el ultimo elemento de la lista de tareas */
+                g_Os.currentTask = g_Os.maxTask;
+            }
+        #endif
+        
+        /* Seteamos el estado de la tarea a ejecutarse como corriendo */
+        g_Os.taskList[g_Os.currentTask].state  = TASK_STATE_RUNNING;
+        
+    }
     /* Retornamos su contexto */
     return g_Os.taskList[g_Os.currentTask].stackPointer;
 
@@ -526,12 +545,14 @@ int32_t taskSchedule(int32_t currentContext)
     */
     void taskDelay(uint32_t ticksToDelay)
     {
+        /* Si el delay es mayor a 0 y la tarea que llama a taskDelay NO es la idle task */
         if(0 < ticksToDelay && OS_IDLE_TASK != g_Os.currentTask)
         {
             g_Os.taskList[g_Os.currentTask].state = TASK_STATE_BLOCKED;
             g_Os.taskList[g_Os.currentTask].ticksToWait = ticksToDelay; 
             schedule();
         }
+        
     }
 #endif
 
@@ -546,9 +567,8 @@ uint32_t taskGetTickCount()
     return g_Os.tickCount;
 }
 
-
 /**
-* @fn uint32_t taskGetTickCount()
+* @fn uint32_t taskYield()
 * @brief Funcion que cede el procesador a otra tarea
 * @param  Ninguno
 * @return osReturn_t OS_RESULT_OK si pudo ceder el procesador, OS_RESULT_ERROR caso contrario
@@ -576,6 +596,52 @@ osReturn_t taskYield()
 
 }
 
+/**
+* @fn void taskUnsuspendWithinAPI(uint8_t taskId)
+* @brief Funcion que desbloquea una tarea
+* @param  taskId : id de la tarea a desbloquear
+* @return Nada
+* @warning NO DEBE SER USADA POR EL USUARIO
+*/
+void taskUnsuspendWithinAPI(uint8_t taskId)
+{
+    g_Os.taskList[taskId].ticksToWait = 0;
+    g_Os.taskList[taskId].state = TASK_STATE_READY;
+    addReadyTask(taskId, g_Os.taskList[taskId].priority - 1);
+}
+
+/**
+* @fn void osSuspendContextSwitching()
+* @brief Funcion que suspende el context switch
+* @param  Ninguno
+* @return Nada
+*/
+void osSuspendContextSwitching()
+{
+    g_Os.state = OS_STATE_SUSPENDED;
+}
+
+/**
+* @fn void osResumeContextSwitching()
+* @brief Funcion que resume el context switch
+* @param  Ninguno
+* @return Nada
+*/
+void osResumeContextSwitching()
+{
+    g_Os.state = OS_STATE_RUNNING;
+}
+
+/**
+* @fn void osGetCurrentTask()
+* @brief Funcion que devuelve la tarea en ejecucion
+* @param  Ninguno
+* @return Id de la tarea en ejecucion
+*/
+uint8_t osGetCurrentTask()
+{
+    return g_Os.currentTask;
+}
 /*==================[IRQ Handlers]======================================*/
 /**
 * @fn void SysTick_Handler( void )

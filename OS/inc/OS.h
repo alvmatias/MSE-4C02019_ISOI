@@ -23,6 +23,10 @@
     #error Missing definition:  OS_MAX_TASK must be defined in OS_config.h. 
 #endif
 
+#if OS_MAX_TASK < 1
+    #error OS_MAX_TASK must be defined in OS_config.h to be greater than or equal to 1.
+#endif
+
 #ifndef OS_TICKS_UNTIL_SCHEDULE
     #error Missing definition:  OS_TICKS_UNTIL_SCHEDULE must be defined in OS_config.h as either 1 or 0.
 #endif
@@ -39,7 +43,7 @@
     #error OS_MAX_TASK_PRIORITY must be defined to be greater than or equal to 1.
 #endif
 
-#ifndef OS_USE_PREEMPTIVE_SCHED
+#ifndef OS_USE_PRIO_ROUND_ROBIN_SCHED
     #error Missing definition:  OS_USE_PREEMPTIVE_SCHED must be defined in OS_config.h as either 1 or 0.
 #endif
 
@@ -48,14 +52,23 @@
 #endif
 
 #ifndef OS_USE_TASK_DELAY
-    #define OS_USE_TASK_DELAY 0
+    #define OS_USE_TASK_DELAY   0
 #endif
 
+#ifndef NULL
+    #define NULL    ((void *)0)
+#endif
 /**
 * @def OS_MAX_DELAY
 * @brief Tiempo de delay maximo posible
 */
 #define OS_MAX_DELAY ( uint32_t ) 0xffffffffUL
+
+/**
+* @def OS_IDLE_TASK
+* @var ID de la tarea idle
+*/
+#define OS_IDLE_TASK        OS_MAX_TASK
 /*==================[typedef]================================================*/
 /**
 * @def void (*taskFunction_t)(void *)
@@ -84,6 +97,8 @@ typedef enum
 /*==================[internal functions definition]==========================*/
 
 /*==================[external functions definition]==========================*/
+void schedule();
+
 osReturn_t taskCreate(taskFunction_t taskFx, uint32_t priority, uint32_t * stack, uint32_t stackSize,
                    char * taskName, void * parameters);
 
@@ -94,6 +109,14 @@ int32_t taskSchedule(int32_t currentContext);
 void    taskDelay(uint32_t ticksToDelay);
 
 uint32_t taskGetTickCount();
+
+void taskUnsuspendWithinAPI(uint8_t taskId);
+
+void osSuspendContextSwitching();
+
+void osResumeContextSwitching();
+
+uint8_t osGetCurrentTask();
 
 osReturn_t taskYield();
 /*==================[end of file]============================================*/

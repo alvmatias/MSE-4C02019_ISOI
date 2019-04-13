@@ -44,7 +44,7 @@
 * @brief Maxima cantidad de caracteres posible del nombre de la tarea
 * @note Obligatoria su definicion
 */
-#define OS_MAX_TASK_NAME_LEN		10
+#define OS_MAX_TASK_NAME_LEN        10
 
 /**
 * @def OS_TICKS_UNTIL_SCHEDULE
@@ -73,7 +73,7 @@
 * @note POR AHORA SIEMPRE EN 1
 * @note Es obligatoria su definicion
 */
-#define OS_USE_PREEMPTIVE_SCHED 	1  
+#define OS_USE_PRIO_ROUND_ROBIN_SCHED     1  
 /*==================[typedef]================================================*/
 
 /*==================[internal data declaration]==============================*/
