@@ -46,9 +46,9 @@ PendSV_Handler:
     pop {r4-r11,lr}     /* Pop de contexto */
 
     tst lr, 0x10        /* Comparamos lr(EXC_RETURN) y 0x10 */
-    
+
     it eq               /* Si el resultado fue 0 */ /* Ejecucion condicional */
-    
+
     vpopeq {s16-s31}    /* Pusheo s16-s31 al stack, y fuerzo el stacking de s0-s15 y fpscr */
  
     cpsie i             /* Habilitamos interrupciones */

@@ -15,14 +15,14 @@
 * @brief Minimo tamaño de stack usado por las tareas
 * @note Obligatoria su definicion
 */
-#define OS_MINIMAL_STACK_SIZE       128
+#define OS_MINIMAL_STACK_SIZE       256
 
 /**
 * @def OS_IDLE_STACK_SIZE
 * @brief Tamaño del stack usado por la idle task
 * @note Obligatoria su definicion
 */
-#define OS_IDLE_STACK_SIZE          128
+#define OS_IDLE_STACK_SIZE          256
 
 /**
 * @def OS_MAX_TASK
@@ -73,7 +73,27 @@
 * @note POR AHORA SIEMPRE EN 1
 * @note Es obligatoria su definicion
 */
-#define OS_USE_PRIO_ROUND_ROBIN_SCHED     1  
+#define OS_USE_PRIO_ROUND_ROBIN_SCHED     	1  
+
+/**
+* @def OS_USE_SEMPHR
+* @var Flag que indica si el sistema usa semaforos
+* @note No es obligatoria su definicion
+*/
+#define OS_USE_SEMPHR						1
+
+/**
+* @def OS_USE_QUEUE
+* @var Flag que indica si el sistema usa semaforos
+* @note NO es obligatoria su definicion
+*/
+#define OS_USE_QUEUE						1
+/**
+* @def OS_QUEUE_LEN
+* @brief Cantidad maxima de elementos de la cola 
+* @note Es obligatoria su definicion si OS_USE_QUEUE == 1
+*/
+#define OS_QUEUE_LEN						2
 /*==================[typedef]================================================*/
 
 /*==================[internal data declaration]==============================*/

@@ -17,12 +17,6 @@
 #include <string.h>
 /*==================[macros]=================================================*/
 /**
-* @def OS_INVALID_TASK
-* @var ID de la tarea invalida
-*/
-#define OS_INVALID_TASK     0xFF
-
-/**
 * @def OS_NULL_PRIORITY
 * @var Valor de la prioridad nula
 */
@@ -77,7 +71,7 @@ typedef struct
         taskState_t     state;                      /**< Estado de la tarea */
         uint32_t        ticksToWait;                /**< Ticks a esperar en caso de ejecucion de taskDelay() */
     #endif
-
+                 
     uint8_t         taskName[OS_MAX_TASK_NAME_LEN]; /**< Nombre de la tarea - Solo como proposito de debug */ 
 
 }taskControlBlock_t;
@@ -201,8 +195,8 @@ static osReturn_t osIncrementTick()
     /* Si es tick de ejecucion de scheduler */
     if(0 == (g_Os.tickCount % OS_TICKS_UNTIL_SCHEDULE)) 
     {
-
-        #if ( OS_USE_TICK_HOOK == 1 )
+    	
+    	#if ( OS_USE_TICK_HOOK == 1 )
         {
             tickHook();
         }
@@ -344,6 +338,7 @@ static void initStack(uint32_t * stack,
     g_Os.taskList[g_Os.maxTask].stackSize     = stackSize;
     g_Os.taskList[g_Os.maxTask].parameters    = parameters;
     g_Os.taskList[g_Os.maxTask].priority      = priority;
+
     if(OS_MAX_TASK_NAME_LEN > strlen(taskName))
     {
         strcpy(g_Os.taskList[g_Os.maxTask].taskName, taskName);    
@@ -369,7 +364,7 @@ static void initStack(uint32_t * stack,
 * @return Nada
 * @warning NO DEBERIA SER LLAMADA POR EL USUARIO DEL OS
 */
-void schedule()
+static void schedule()
 {
     /* Instruction Synchronization Barrier: aseguramos que se
      * ejecuten todas las instrucciones en  el pipeline
@@ -473,7 +468,7 @@ int32_t taskSchedule(int32_t currentContext)
 {
     uint8_t p;  /** Variable para recorrer la lista de prioridades */
     
-    if(OS_IDLE_TASK == g_Os.currentTask)
+    if(g_Os.maxTask == g_Os.currentTask)
     {
         /* Aca se entra si volvemos de la idle task */
         #if ( OS_USE_TASK_DELAY == 1 )
@@ -571,45 +566,31 @@ uint32_t taskGetTickCount()
 * @fn uint32_t taskYield()
 * @brief Funcion que cede el procesador a otra tarea
 * @param  Ninguno
-* @return osReturn_t OS_RESULT_OK si pudo ceder el procesador, OS_RESULT_ERROR caso contrario
+* @return Nada
 */
-osReturn_t taskYield()
+void taskYield()
 {
     
-    osReturn_t retVal = OS_RESULT_OK;  /** Valor de retorno */
-    /* Si la tarea se encuentra corriendo */
-    if(TASK_STATE_RUNNING == g_Os.taskList[g_Os.currentTask].state)
-    {
-        /* Pasa a ready */
-        g_Os.taskList[g_Os.currentTask].state = TASK_STATE_READY;
-        addReadyTask(g_Os.currentTask, g_Os.taskList[g_Os.currentTask].priority - 1);
-        /* Llamamos al scheduler */
-        schedule();
-    }
-    else
-    {
-        /* Sino, devolvemos error */
-        retVal = OS_RESULT_ERROR;
-    }
-
-    return retVal;
-
+    /* Llamamos al scheduler */
+    schedule();
+  
 }
 
-/**
-* @fn void taskUnsuspendWithinAPI(uint8_t taskId)
-* @brief Funcion que desbloquea una tarea
-* @param  taskId : id de la tarea a desbloquear
-* @return Nada
-* @warning NO DEBE SER USADA POR EL USUARIO
-*/
-void taskUnsuspendWithinAPI(uint8_t taskId)
-{
-    g_Os.taskList[taskId].ticksToWait = 0;
-    g_Os.taskList[taskId].state = TASK_STATE_READY;
-    addReadyTask(taskId, g_Os.taskList[taskId].priority - 1);
-}
-
+#if ( OS_USE_SEMPHR == 1 )
+    /**
+    * @fn void taskUnsuspendWithinAPI(uint8_t taskId)
+    * @brief Funcion que desbloquea una tarea
+    * @param  taskId : id de la tarea a desbloquear
+    * @return Nada
+    * @warning NO DEBE SER USADA POR EL USUARIO
+    */
+    void taskUnsuspendWithinAPI(uint8_t taskId)
+    {
+        g_Os.taskList[taskId].ticksToWait = 0;
+        g_Os.taskList[taskId].state = TASK_STATE_READY;
+        addReadyTask(taskId, g_Os.taskList[taskId].priority - 1);
+    }
+#endif
 /**
 * @fn void osSuspendContextSwitching()
 * @brief Funcion que suspende el context switch
@@ -641,6 +622,17 @@ void osResumeContextSwitching()
 uint8_t osGetCurrentTask()
 {
     return g_Os.currentTask;
+}
+
+/**
+* @fn vuint8_t osIsIdleTask(uint8_t taskId)
+* @brief Funcion que devuelve si una tarea es la idle task
+* @param  Ninguno
+* @return true(1) si la tarea es la idle task, false(0) caso contrario
+*/
+uint8_t osIsIdleTask(uint8_t taskId)
+{
+    return g_Os.maxTask == taskId;
 }
 /*==================[IRQ Handlers]======================================*/
 /**
