@@ -12,11 +12,13 @@
 #include "board.h"
 #include <stdint.h>
 #include "gpio.h"
+#include "uart.h"
 /*==================[macros]=================================================*/
 #define EXECUTE_EJ1     0
 #define EXECUTE_EJ2     0
-#define EXECUTE_EJ3     1
+#define EXECUTE_EJ3     0
 #define EXECUTE_EJ6     0
+#define EXECUTE_EJ7     1
 
 #if ( EXECUTE_EJ1 == 1 )
 
@@ -150,11 +152,13 @@ uint32_t exchangeBufferTaskStack[OS_MINIMAL_STACK_SIZE];
 uint32_t fillBufferTaskStack[OS_MINIMAL_STACK_SIZE];
 uint32_t processTaskStack[OS_MINIMAL_STACK_SIZE];
 
+
 semaphore_t processTaskSem;
 semaphore_t fillBufferTaskSem;
 
 uint16_t bufferA[BUFFER_SAMPLES];
 uint16_t bufferB[BUFFER_SAMPLES];
+uint16_t resultBuffer[BUFFER_SAMPLES];
 
 void processTask(void * parameters)
 {
@@ -168,7 +172,7 @@ void processTask(void * parameters)
             Board_LED_Toggle(2);
             for(i = 0; i < BUFFER_SAMPLES; i++)
             {
-                buffer[i] *= 2;
+                resultBuffer[i] = 2 * buffer[i];
             }
 
             buffer = (buffer == bufferA) ? bufferB : bufferA;
@@ -472,6 +476,122 @@ void GPIO0_IRQHandler(void){
     Chip_PININT_ClearIntStatus(LPC_GPIO_PIN_INT,PININTCH(GPIO_CHANNEL_0));
 
     semphrGive(&buttonTaskSem);
+}
+
+#elif ( EXECUTE_EJ7 == 1 )
+#include <stdlib.h>
+
+#define MAX_TEMP_SENSOR 4   
+#define MAX_HUM_SENSOR  3
+
+#define MS_TO_SEC(ms) ((ms) / 1000)
+#define SEC_TO_MIN(sec) ((sec) / 60)
+#define SEC_TO_HOUR(min) ((min) / 3600)
+
+#define HOUR_TO_SEC(hour)   ((hour)*3600)
+
+#define MIN_TO_SEC(min)    ((min)*60)
+
+#define MAX_BUFFER_SIZE 64
+/* Buffers a las pilas de cada tarea */
+uint32_t tempSensorTaskStack[MAX_TEMP_SENSOR][OS_MINIMAL_STACK_SIZE];
+uint32_t humSensorTaskStack[MAX_HUM_SENSOR][OS_MINIMAL_STACK_SIZE];
+
+uint8_t tempSensorId[MAX_TEMP_SENSOR];
+uint8_t humSensorId[MAX_HUM_SENSOR];
+
+semaphore_t uartSem;
+
+void tempSensorTask(void * parameters)
+{
+    uint8_t * id;
+    uint8_t buffer[MAX_BUFFER_SIZE];
+    id = (uint8_t *)parameters;
+
+    while(1)
+    {
+        uint32_t ticks = taskGetTickCount();
+        
+        while(OS_RESULT_OK != semphrTake(&uartSem, OS_MAX_DELAY))
+            ;
+
+        uint8_t sec, min, hour;
+        sec = MS_TO_SEC(ticks);
+        hour = SEC_TO_HOUR(sec);
+        sec -= HOUR_TO_SEC(hour);
+        min = SEC_TO_MIN(sec);
+        sec -= MIN_TO_SEC(min); 
+
+        sprintf(buffer, "[%02d:%02d:%02d][INVERNADERO:001][TEMP:%d][%d.%dC]\r\n", hour, min, sec, *id, rand() % 50, rand() % 10);
+
+        uartWriteString(UART_USB, buffer);
+        semphrGive(&uartSem);
+    
+
+        taskDelay((rand() % 500) + 5);
+    }
+    
+}
+
+void humSensorTask(void * parameters){
+    uint8_t * id;
+    uint8_t buffer[MAX_BUFFER_SIZE];
+    id = (uint8_t *)parameters;
+
+    while(1)
+    {
+        uint32_t ticks = taskGetTickCount();
+        uint8_t sec, min, hour;
+
+        while(OS_RESULT_OK != semphrTake(&uartSem, OS_MAX_DELAY))
+            ;
+
+        sec = MS_TO_SEC(ticks);
+        hour = SEC_TO_HOUR(sec);
+        sec -= HOUR_TO_SEC(hour);
+        min = SEC_TO_MIN(sec);
+        sec -= MIN_TO_SEC(min); 
+
+        sprintf(buffer, "[%02d:%02d:%02d][INVERNADERO:001][HUM:%d][%d%%]\r\n", hour, min, sec, *id, rand() % 101);
+
+        uartWriteString(UART_USB, buffer);
+        semphrGive(&uartSem);
+
+        taskDelay((rand() % 500) + 5);
+    }
+
+} 
+
+int main(void){
+    uint8_t i;
+
+    Board_Init();
+    SystemCoreClockUpdate();
+    /* Configuramos GPIO */
+    uartConfig(UART_USB, BAUDRATE_115200);
+
+    /* Inicializamos los semaforos */
+    semphrInit(&uartSem);
+
+    semphrGive(&uartSem);
+
+    /* Creacion de las tareas */
+    /* Menor numero mayor prioridad */
+    for(i = 0; i < MAX_TEMP_SENSOR; i++){
+        tempSensorId[i] = i + 1;
+        taskCreate(tempSensorTask, 1, tempSensorTaskStack[i], OS_MINIMAL_STACK_SIZE, "tempSensor", (void *)&tempSensorId[i]);
+    }
+
+    for(i = 0; i < MAX_HUM_SENSOR; i++){
+        humSensorId[i] = i + 1;
+        taskCreate(humSensorTask, 1, humSensorTaskStack[i], OS_MINIMAL_STACK_SIZE, "humSensor", (void *)&humSensorId[i]);
+    }
+
+    /* Start the scheduler */
+    taskStartScheduler();
+
+    /* No se deberia arribar aqui nunca */
+    return 1;
 }
 
 #endif

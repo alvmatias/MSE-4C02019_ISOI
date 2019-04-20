@@ -79,7 +79,7 @@ typedef enum{
 * @param config : Configuracion de la UART.
 * @return Nada.
 */
-void uartConfig(uartMap_t uart, baudRate_t baudRate, uint8_t config);
+void uartConfig(uartMap_t uart, baudRate_t baudRate);
 
 void uartDeInit(uartMap_t uart);
 /**

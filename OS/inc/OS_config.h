@@ -15,7 +15,7 @@
 * @brief Minimo tamaño de stack usado por las tareas
 * @note Obligatoria su definicion
 */
-#define OS_MINIMAL_STACK_SIZE       256
+#define OS_MINIMAL_STACK_SIZE       1024
 
 /**
 * @def OS_IDLE_STACK_SIZE
@@ -29,7 +29,7 @@
 * @brief Maxima cantidad de tareas que soporta el sistema
 * @note Obligatoria su definicion
 */
-#define OS_MAX_TASK                 3
+#define OS_MAX_TASK                 7
 
 /**
 * @def OS_MAX_TASK_PRIORITY
@@ -37,7 +37,7 @@
 * @note Cuanto mayor el numero de prioridad, menor la prioridad real de la tarea
 * @note Obligatoria su definicion
 */
-#define OS_MAX_TASK_PRIORITY        3 
+#define OS_MAX_TASK_PRIORITY        2 
 
 /**
 * @def OS_MAX_TASK_NAME_LEN

@@ -44,7 +44,7 @@ static const lpc4337ScuPin_t lpcUart485DirPin =
 
 /*==================[external functions definition]==========================*/
 
-void uartConfig(uartMap_t uart, baudRate_t baudRate, uint8_t config)
+void uartConfig(uartMap_t uart, baudRate_t baudRate)
 {
     /* Init Uart */
     Chip_UART_Init(lpcUarts[uart].uartAddr);
@@ -79,8 +79,6 @@ void uartConfig(uartMap_t uart, baudRate_t baudRate, uint8_t config)
                         MD_PDN, 
                         lpcUart485DirPin.lpcScuFunc );             
     }
-
-    Chip_UART_ConfigData(lpcUarts[uart].uartAddr, config);
 
     NVIC_SetPriority(lpcUarts[uart].uartIrqAddr, UART_IRQ_PRIO);
     NVIC_EnableIRQ(lpcUarts[uart].uartIrqAddr);
